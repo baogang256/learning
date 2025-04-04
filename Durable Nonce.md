@@ -1,14 +1,14 @@
-### 使用 Solana 的 Durable Nonce 向多个 Landing Service 发送同一笔交易
+# 使用 Solana 的 Durable Nonce 向多个 Landing Service 发送同一笔交易
 
 在 Solana 区块链中，Durable Nonce 是一种强大的工具，可以用于创建和签名可以在未来任意时间提交的交易。与普通的基于区块哈希的交易不同，Durable Nonce 交易不会因为区块哈希过期而失效，这使得它们特别适合需要离线签名或延迟提交的场景。本文将详细介绍如何使用 Durable Nonce 向多个 Landing Service 发送同一笔交易，并解释这样做的好处。
 
-#### 1\. Durable Nonce 的工作原理
+## 1\. Durable Nonce 的工作原理
 
 在 Solana 中，普通的交易使用 Recent Blockhash 来防止双重支付（Double-Spend）问题。然而，Recent Blockhash 只在最近 150 个区块内有效（大约 80-90 秒），这限制了交易的提交时间。Durable Nonce 通过引入一个特殊的账户（Nonce Account）来解决这个问题。Nonce Account 存储一个唯一的 Nonce 值，该值可以替代 Recent Blockhash，从而确保每笔交易的唯一性。
 
 Durable Nonce 交易的另一个关键特性是，每笔交易必须以 `nonceAdvance` 指令作为第一条指令。这个指令会更新 Nonce Account 中的 Nonce 值，确保每次交易的 Nonce 都是唯一的。即使交易失败，Nonce 也会被推进，从而防止重复使用同一个 Nonce。
 
-#### 2\. 使用 Durable Nonce 向多个 Landing Service 发送交易的好处
+## 2\. 使用 Durable Nonce 向多个 Landing Service 发送交易的好处
 
 向多个 Landing Service 发送同一笔交易的主要目的是提高交易的总成功率。在实际应用中，可能会遇到以下情况：
 
@@ -18,11 +18,11 @@ Durable Nonce 交易的另一个关键特性是，每笔交易必须以 `nonceAd
 
 通过向多个 Landing Service 发送同一笔交易，可以显著提高交易成功提交的可能性。Durable Nonce 的持久性和唯一性确保了即使某些 Landing Service 失败，其他 Landing Service 仍然可以成功提交交易。
 
-#### 3\. 实现步骤
+## 3\. 实现步骤
 
 以下是使用 Durable Nonce 向多个 Landing Service 发送同一笔交易的实现步骤：
 
-##### 3.1 创建 Nonce 账户
+### 3.1 创建 Nonce 账户
 
 首先，需要创建一个 Nonce 账户，并为其提供足够的资金以满足租金豁免的要求。
 
@@ -64,7 +64,7 @@ async function createNonceAccount() {
 
 ```
 
-##### 3.2 创建和签名交易
+### 3.2 创建和签名交易
 
 接下来，创建一笔交易并使用 Durable Nonce 签名。这一步需要将 Nonce 值作为交易的 `recentBlockhash`，并添加 `nonceAdvance` 指令。
 
@@ -100,7 +100,7 @@ async function createAndSignTransaction(nonceAuthKeypair, nonceKeypair, senderKe
 
 ```
 
-##### 3.3 提交交易到多个 Landing Service
+### 3.3 提交交易到多个 Landing Service
 
 最后，将签名后的交易提交到多个 Landing Service。这一步可以通过调用 `sendAndConfirmRawTransaction` 方法完成。
 
@@ -139,6 +139,6 @@ async function submitTransactionToMultipleServices(base58Tx, services) {
 })();
 ```
 
-#### 4\. 总结
+## 4\. 总结
 
 通过使用 Solana 的 Durable Nonce，我们可以创建和签名可以在未来任意时间提交的交易。向多个 Landing Service 发送同一笔交易可以显著提高交易的总成功率，尤其是在网络不稳定或交易拥堵的情况下。Durable Nonce 的持久性和唯一性确保了即使某些 Landing Service 失败，其他 Landing Service 仍然可以成功提交交易。
