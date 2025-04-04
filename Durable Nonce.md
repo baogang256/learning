@@ -145,10 +145,8 @@ async function submitTransactionToMultipleServices(base58Tx, services) {
 
 ## 参考信息
 
-- [Solana Durable Nonces - 官方文档](https://docs.solana.com/implemented-proposals/durable-txn-nonces)
-- [Solana Durable Nonces CLI 示例](https://docs.solana.com/cli/durable-nonces)
+- [Solana Durable Nonces - 官方文档](https://solana.com/developers/guides/advanced/introduction-to-durable-nonces)
 - [Durable & Offline Transaction Signing using Nonces - GitHub](https://github.com/0xproflupin/solana-durable-nonces)
-- [如何在 Solana 上使用 Durable Nonce 发送离线交易 - 登链社区](https://www.dclchain.com/article/1234567890)  
 
 ---
 
