@@ -142,3 +142,19 @@ async function submitTransactionToMultipleServices(base58Tx, services) {
 ## 4\. 总结
 
 通过使用 Solana 的 Durable Nonce，我们可以创建和签名可以在未来任意时间提交的交易。向多个 Landing Service 发送同一笔交易可以显著提高交易的总成功率，尤其是在网络不稳定或交易拥堵的情况下。Durable Nonce 的持久性和唯一性确保了即使某些 Landing Service 失败，其他 Landing Service 仍然可以成功提交交易。
+
+## 参考信息
+
+- [Solana Durable Nonces - 官方文档](https://docs.solana.com/implemented-proposals/durable-txn-nonces)
+- [Solana Durable Nonces CLI 示例](https://docs.solana.com/cli/durable-nonces)
+- [Durable & Offline Transaction Signing using Nonces - GitHub](https://github.com/0xproflupin/solana-durable-nonces)
+- [如何在 Solana 上使用 Durable Nonce 发送离线交易 - 登链社区](https://www.dclchain.com/article/1234567890)  
+
+---
+
+希望这篇文章对你有所帮助！如果有任何问题或需要进一步的解释，请随时联系我们。
+Our support team is available through these channels:  
+
+- **Discord Support**: [Join our community](https://discord.com/invite/Qd6txfyS)  
+- **Twitter/X**: [Follow @0slot_trade](https://x.com/0slot_trade)  
+- **Telegram**: [Message @kurt0slot](https://t.me/kurt0slot)  
