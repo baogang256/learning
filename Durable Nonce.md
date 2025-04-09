@@ -25,118 +25,235 @@ Durable Nonce 交易的另一个关键特性是，每笔交易必须以 `nonceAd
 ### 3.1 创建 Nonce 账户
 
 首先，需要创建一个 Nonce 账户，并为其提供足够的资金以满足租金豁免的要求。
+#### 创建 Solana Nonce 账户的命令行步骤
+##### 生成 Nonce 账户密钥对
+```bash
+solana-keygen new -o nonce-account.json
+```
+**说明**：  
+  - 此命令会生成一个新的密钥对，并保存到 `nonce-account.json` 文件中。
+  - 密钥对包含公钥和私钥，用于标识 Nonce 账户。
 
-```javascript
-const { Connection, Keypair, LAMPORTS_PER_SOL, SystemProgram, Transaction } = require('@solana/web3.js');
-const bs58 = require('bs58');
+##### 使用发送者账户创建 Nonce 账户
+```bash
+solana -k sender.json create-nonce-account nonce-account.json 0.0015
+```
+**参数解析**：  
+  - `-k sender.json`：指定支付交易费用的发送者账户密钥文件。
+  - `nonce-account.json`：上一步生成的 Nonce 账户密钥文件。
+  - `0.0015`：分配给 Nonce 账户的初始 SOL 余额（单位：SOL）。
 
-const RPC_URL = 'https://api.devnet.solana.com'; // 使用 Devnet
-const connection = new Connection(RPC_URL);
+**功能**：  
+  - 该命令会从发送者账户扣除指定 SOL，创建并初始化 Nonce 账户。
+  - Nonce 账户用于存储链上动态随机数（Durable Nonce），支持离线交易。
 
-async function createNonceAccount() {
-    const nonceAuthKeypair = Keypair.generate();
-    const nonceKeypair = Keypair.generate();
+### 3.2 使用Durable Nonce的完整示例（Python）
 
-    // 为 Nonce 授权账户提供资金
-    await connection.requestAirdrop(nonceAuthKeypair.publicKey, LAMPORTS_PER_SOL);
+接下来，我们将通过Python代码，演示如何利用同一个Nonce Instruction，将同一笔交易，面向不同的Landing Service分别构建不同的Transaction并提交。我们使用了两个Landing Service: de.0slot.trade (Germany endpoint)和ny.0slot.trade ( New York endpoint), 以及上面已经创建好的Nonce账号。
 
-    // 创建 Nonce 账户
-    const tx = new Transaction();
-    tx.add(
-        SystemProgram.createAccount({
-            fromPubkey: nonceAuthKeypair.publicKey,
-            newAccountPubkey: nonceKeypair.publicKey,
-            lamports: 0.0015 * LAMPORTS_PER_SOL,
-            space: 82, // Nonce 账户所需空间
-            programId: SystemProgram.programId,
-        }),
-        SystemProgram.nonceInitialize({
-            noncePubkey: nonceKeypair.publicKey,
-            authorizedPubkey: nonceAuthKeypair.publicKey,
-        })
-    );
+我们首先展示完整的代码，你可以复制并保存为py文件运行。接下去我们会对关键代码进行说明。
 
-    const signature = await connection.sendTransaction(tx, [nonceAuthKeypair, nonceKeypair]);
-    console.log(`Nonce 账户创建成功，签名：${signature}`);
+#### 3.2.1 完整代码
 
-    return { nonceAuthKeypair, nonceKeypair };
-}
+```python
+import base58
+import asyncio
+import argparse
+from solders.hash import Hash
+from solders.pubkey import Pubkey
+from solders.keypair import Keypair
+from solders.message import Message
+from solders.transaction import Transaction
+from solders.system_program import TransferParams, transfer
+from solana.rpc.async_api import AsyncClient
+
+async def send_solana_transaction(api_key, private_key, nonce_public_key, to_public_key):
+    # Initialize clients for different regions
+    client_for_blockhash = AsyncClient(f"https://api.mainnet-beta.solana.com")
+    de_sender = AsyncClient(f"https://de.0slot.trade?api-key=" + api_key)  # Germany endpoint
+    ny_sender = AsyncClient(f"https://ny.0slot.trade?api-key=" + api_key)  # New York endpoint
+
+    # Create keypair from private key
+    sender = Keypair.from_bytes(base58.b58decode(private_key))
+
+    # Main recipient address
+    receiver = Pubkey.from_string(to_public_key)
+    # Our TIP receiving addresses - using different addresses for DE and NY to simulate multiple Landing Services
+    de_tip_receiver = Pubkey.from_string("6fQaVhYZA4w3MBSXjJ81Vf6W1EDYeUPXpgVQ6UQyU1Av")
+    ny_tip_receiver = Pubkey.from_string("4HiwLEP2Bzqj3hM2ENxJuzhcPCdsafwiet3oGkMkuQY4")
+    # Nonce account public key created by sender - must be associated
+    # solana-keygen new -o nonce-account.json
+    # solana -k sender.json create-nonce-account nonce-account.json 0.0015
+    nonce_account_pubkey = Pubkey.from_string(nonce_public_key)
+
+    # Get nonce account info to extract the current nonce value
+    get_account_resp = await client_for_blockhash.get_account_info(nonce_account_pubkey)
+    await client_for_blockhash.close()
+
+    # The nonce is stored in the account data at bytes 40-72
+    # This matches the Rust NonceState structure layout:
+    # struct NonceState {
+    #     version: u32,          // 4 bytes (offset 0-3)
+    #     state: u32,            // 4 bytes (offset 4-7)
+    #     authorized_pubkey: Pubkey,  // 32 bytes (offset 8-39)
+    #     nonce: Pubkey,         // 32 bytes (offset 40-71) ← we need this
+    #     fee_calculator: FeeCalculator,  // 8 bytes (offset 72-79)
+    # }
+    nonce = get_account_resp.value.data[40:72]
+    nonce_hash = Hash.from_bytes(nonce)
+
+    # Create transaction instructions for Germany endpoint
+    # Includes:
+    # 1. Main transfer (1 lamport)
+    # 2. Tip transfer (100,000 lamports = 0.0001 SOL)
+    de_instructions = [
+        transfer(
+            TransferParams(
+                from_pubkey=sender.pubkey(),
+                to_pubkey=receiver,
+                lamports=1
+            )
+        ),
+        transfer(
+            TransferParams(
+                from_pubkey=sender.pubkey(),
+                to_pubkey=de_tip_receiver,
+                lamports=100000
+            )
+        )
+    ]
+    
+    # Create transaction instructions for New York endpoint (same structure)
+    ny_instructions = [
+        transfer(
+            TransferParams(
+                from_pubkey=sender.pubkey(),
+                to_pubkey=receiver,
+                lamports=1
+            )
+        ),
+        transfer(
+            TransferParams(
+                from_pubkey=sender.pubkey(),
+                to_pubkey=ny_tip_receiver,
+                lamports=100000
+            )
+        )
+    ]
+    
+    # Create messages with nonce for each transaction
+    de_message = Message.new_with_nonce(
+        de_instructions,
+        payer=sender.pubkey(),
+        nonce_account_pubkey=nonce_account_pubkey,
+        nonce_authority_pubkey=sender.pubkey(),
+    )
+    ny_message = Message.new_with_nonce(
+        ny_instructions,
+        payer=sender.pubkey(),
+        nonce_account_pubkey=nonce_account_pubkey,
+        nonce_authority_pubkey=sender.pubkey(),
+    )
+
+    # Create unsigned transactions
+    de_transaction = Transaction.new_unsigned(de_message)
+    ny_transaction = Transaction.new_unsigned(ny_message)
+
+    # Sign transactions with the same nonce
+    de_transaction.sign([sender], nonce_hash)
+    ny_transaction.sign([sender], nonce_hash)
+
+    try:
+        # Send both transactions concurrently using asyncio
+        de_task = de_sender.send_transaction(de_transaction)
+        ny_task = ny_sender.send_transaction(ny_transaction)
+        results = await asyncio.gather(
+            de_task,
+            ny_task,
+            return_exceptions=True  # Don't fail if one transaction fails
+        )
+        
+        # Process results
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                print(f"Error sending to {'DE' if i == 0 else 'NY'}: {str(result)}")
+            else:
+                print(f"Transaction signature ({'DE' if i == 0 else 'NY'}):", result.value)
+    except Exception as e:
+        print("Error:", str(e))
+    finally:
+        # Clean up connections
+        await de_sender.close()
+        await ny_sender.close()
+
+async def main():
+    # Set up command line argument parser
+    parser = argparse.ArgumentParser(description="Send a Solana transaction")
+    parser.add_argument("--api_key", required=True, help="Solana API key for accessing the network.")
+    parser.add_argument("--private_key", required=True, help="Sender's private key for signing the transaction.")
+    parser.add_argument("--nonce_public_key", required=True, help="Sender's nonce account public key")
+    parser.add_argument("--to_public_key", required=True, help="Public key of the main receiver.")
+
+    args = parser.parse_args()
+
+    await send_solana_transaction(
+        args.api_key,
+        args.private_key,
+        args.nonce_public_key,
+        args.to_public_key,
+    )
+
+if __name__ == "__main__":
+    asyncio.run(main())
 
 ```
 
-### 3.2 创建和签名交易
+#### 3.2.2 针对不同Landing Serivce创建transaction message
+  
+上述完整的代码中，使用Nonce Instruction针对Landing Service: de.0slot.trade (Germany endpoint)创建transaction messages的关键代码如下：
 
-接下来，创建一笔交易并使用 Durable Nonce 签名。这一步需要将 Nonce 值作为交易的 `recentBlockhash`，并添加 `nonceAdvance` 指令。
-
-```javascript
-async function createAndSignTransaction(nonceAuthKeypair, nonceKeypair, senderKeypair, receiverPubkey, amount) {
-    const nonceAccountInfo = await connection.getAccountInfo(nonceKeypair.publicKey);
-    const nonceAccount = NonceAccount.fromAccountData(nonceAccountInfo.data);
-
-    const tx = new Transaction();
-    tx.add(
-        SystemProgram.nonceAdvance({
-            authorizedPubkey: nonceAuthKeypair.publicKey,
-            noncePubkey: nonceKeypair.publicKey,
-        }),
-        SystemProgram.transfer({
-            fromPubkey: senderKeypair.publicKey,
-            toPubkey: receiverPubkey,
-            lamports: amount,
-        })
-    );
-
-    tx.recentBlockhash = nonceAccount.nonce;
-    tx.feePayer = senderKeypair.publicKey;
-
-    tx.sign(senderKeypair, nonceAuthKeypair);
-
-    const serializedTx = tx.serialize({ requireAllSignatures: false });
-    const base58Tx = bs58.encode(serializedTx);
-
-    console.log(`签名的交易：${base58Tx}`);
-    return base58Tx;
-}
-
+```python
+# Create transaction instructions for Germany endpoint
+    # Includes:
+    # 1. Main transfer (1 lamport)
+    # 2. Tip transfer (100,000 lamports = 0.0001 SOL)
+    de_instructions = [
+        transfer(
+            TransferParams(
+                from_pubkey=sender.pubkey(),
+                to_pubkey=receiver,
+                lamports=1
+            )
+        ),
+        transfer(
+            TransferParams(
+                from_pubkey=sender.pubkey(),
+                to_pubkey=de_tip_receiver,
+                lamports=100000
+            )
+        )
+    ]
+    # Create messages with nonce for each transaction
+    de_message = Message.new_with_nonce(
+        de_instructions,
+        payer=sender.pubkey(),
+        nonce_account_pubkey=nonce_account_pubkey,
+        nonce_authority_pubkey=sender.pubkey(),
+    )
 ```
+针对Landing Service: ny.0slot.trade ( New York endpoint)的代码和上述基本一致。
 
-### 3.3 提交交易到多个 Landing Service
+#### 3.2.31 同时发送所有的transactions
 
-最后，将签名后的交易提交到多个 Landing Service。这一步可以通过调用 `sendAndConfirmRawTransaction` 方法完成。
-
-```javascript
-async function submitTransactionToMultipleServices(base58Tx, services) {
-    const serializedTx = bs58.decode(base58Tx);
-
-    for (const service of services) {
-        const connection = new Connection(service.url);
-        try {
-            const signature = await connection.sendRawTransaction(serializedTx);
-            console.log(`交易提交到 ${service.name} 成功，签名：${signature}`);
-        } catch (error) {
-            console.error(`交易提交到 ${service.name} 失败：${error.message}`);
-        }
-    }
-}
-
-(async () => {
-    const { nonceAuthKeypair, nonceKeypair } = await createNonceAccount();
-    const senderKeypair = Keypair.generate(); // 创建发送者账户
-    await connection.requestAirdrop(senderKeypair.publicKey, LAMPORTS_PER_SOL); // 为发送者账户提供资金
-
-    const receiverPubkey = Keypair.generate().publicKey; // 接收者账户
-    const amount = 0.01 * LAMPORTS_PER_SOL; // 转账金额
-
-    const base58Tx = await createAndSignTransaction(nonceAuthKeypair, nonceKeypair, senderKeypair, receiverPubkey, amount);
-
-    const services = [
-        { name: 'Landing Service 1', url: 'https://api.landing-service-1.com' },
-        { name: 'Landing Service 2', url: 'https://api.landing-service-2.com' },
-        { name: 'Landing Service 3', url: 'https://api.landing-service-3.com' },
-    ];
-
-    await submitTransactionToMultipleServices(base58Tx, services);
-})();
+```python
+# Send both transactions concurrently using asyncio
+        de_task = de_sender.send_transaction(de_transaction)
+        ny_task = ny_sender.send_transaction(ny_transaction)
+        results = await asyncio.gather(
+            de_task,
+            ny_task,
+            return_exceptions=True  # Don't fail if one transaction fails
+        )
 ```
 
 ## 4\. 总结
