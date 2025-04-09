@@ -139,3 +139,10 @@ python test_keepalive.py --api_key <your_api_key> --private_key <your_private_ke
 ```
 
 运行结果将分别显示不使用 Keep-Alive 和使用 Keep-Alive 时的交易发送时间，从而直观地展示 Keep-Alive 机制带来的性能提升。
+
+希望这篇文章对你有所帮助！如果有任何问题或需要进一步的解释，请随时联系我们。
+Our support team is available through these channels:  
+
+- **Discord Support**: [Join our community](https://discord.com/invite/Qd6txfyS)  
+- **Twitter/X**: [Follow @0slot_trade](https://x.com/0slot_trade)  
+- **Telegram**: [Message @kurt0slot](https://t.me/kurt0slot)  
