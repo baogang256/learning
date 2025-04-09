@@ -1,4 +1,4 @@
-# 使用 Solana 的 Durable Nonce 向多个 Landing Service 发送同一笔交易
+# 使用Durable Nonce 向多个 Landing Service 发送同一笔交易
 
 在 Solana 区块链中，Durable Nonce 是一种强大的工具，可以用于创建和签名可以在未来任意时间提交的交易。与普通的基于区块哈希的交易不同，Durable Nonce 交易不会因为区块哈希过期而失效，这使得它们特别适合需要离线签名或延迟提交的场景。本文将详细介绍如何使用 Durable Nonce 向多个 Landing Service 发送同一笔交易，并解释这样做的好处。
 
